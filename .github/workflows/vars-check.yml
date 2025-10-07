@@ -1,0 +1,14 @@
+name: Vars Check
+on: { workflow_dispatch: {} }
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "PROJECT_ID=${{ vars.PROJECT_ID }}"
+          echo "REGION=${{ vars.REGION }}"
+          echo "AR_REPO=${{ vars.AR_REPO }}"
+          echo "SERVICE_DEV=${{ vars.SERVICE_DEV }}"
+          echo "SERVICE_PROD=${{ vars.SERVICE_PROD }}"
+          echo "WIF_PROVIDER=${{ vars.WIF_PROVIDER }}"
+          echo "WIF_SERVICE_ACCOUNT=${{ vars.WIF_SERVICE_ACCOUNT }}"
