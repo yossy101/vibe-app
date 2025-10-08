@@ -1,0 +1,67 @@
+name: CI/CD to Cloud Run
+
+on:
+  push:
+    branches: [ main ]         # main にpush → prodへ
+  pull_request:
+    branches: [ main ]         # PR作成/更新 → devへ
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # OIDCに必須
+      contents: read
+
+    env:
+      PROJECT_ID: ${{ vars.PROJECT_ID }}
+      REGION: ${{ vars.REGION }}
+      AR_REPO: ${{ vars.AR_REPO }}
+      IMAGE: ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/${{ vars.AR_REPO }}/vibe-app:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) GitHub→GCP を OIDC で認証（鍵レス）
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      # 2) gcloud セットアップ
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      # 3) Artifact Registry への docker 認証
+      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev -q
+
+      # 4) ビルド & プッシュ
+      - name: Build & Push image
+        run: |
+          docker build -t "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      # 5) Cloud Run へデプロイ（PR→dev / main→prod）
+      - name: Deploy to Cloud Run
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SERVICE="${{ vars.SERVICE_DEV }}"
+            ENV="dev"
+          else
+            SERVICE="${{ vars.SERVICE_PROD }}"
+            ENV="prod"
+          fi
+
+          gcloud run deploy "$SERVICE" \
+            --image "${IMAGE}" \
+            --region "${{ env.REGION }}" \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars "ENV=$ENV"
+          # Secretsがある場合の例：
+          # --set-secrets "DATABASE_URL=DATABASE_URL:latest"
+          # Cloud SQLを使う場合の例：
+          # --add-cloudsql-instances "${{ vars.PROJECT_ID }}:${{ vars.REGION }}:<INSTANCE_NAME>"
